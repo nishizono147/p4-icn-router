@@ -43,8 +43,8 @@ header InterestHeader {
     bit<32> content_id;    // Content ID
     bit<16> type;
     //bit<16> src_router_id; // Source Router ID
-    bit<8> hop_count;      // Hop Count
     bit<8> flag;
+    bit<8> hop_count;      // Hop Count
     bit<32> src;
 }
 
@@ -242,15 +242,14 @@ control MyIngress(inout headers hdr,
             content_cache.read(cached_data, hdr.interest.content_id);   //キャッシュがあるか確認
             if (cached_data != 0) {                                //キャッシュがあったら
                 if (hdr.interest.flag == 1) {
-                    hdr.interest.flag = 0;
-                    return_content();
+		    return_content();
                 } else {
-                    return_content();
+		    return_content();
                     content_cache.write(hdr.payload.content_id, 0); //remove cached data
                 }
                 ipv4_lpm.apply();                                  //フォワーディング
             } else {
-                hdr.interest.flag = 0;
+		hdr.interest.flag = 0;
                 foward_interest.apply();  //Interestを複製            
             }
         } else {
