@@ -3,7 +3,7 @@ import argparse
 import random
 import socket
 
-from interest_header import interest
+from icn_header import icn
 from payload_header import payload
 from scapy.all import IP, UDP, Ether, get_if_hwaddr, get_if_list, sendp
 
@@ -28,7 +28,7 @@ def main():
     iface = get_if()
 
     pkt =  Ether(src=get_if_hwaddr(iface), dst='08:00:00:00:01:00', type=0x88B5)
-    pkt = pkt / interest(content_id=content_id, type = 0x11, hop_count=4, flag = 1, src='10.0.1.1') / UDP(dport=1234, sport=random.randint(49152,65535)) / payload(data='') 
+    pkt = pkt / interest(content_id=content_id, type = 0x11, hop_count=4, flag = 1) 
 
     pkt.show2()
 #    hexdump(pkt)

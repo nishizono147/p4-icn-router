@@ -1,8 +1,8 @@
 from scapy.all import *
 
 TYPE_IPV4 = 0x0800
-TYPE_UDP = 0x11
-TYPE_TCP = 0x6
+#TYPE_UDP = 0x11
+#TYPE_TCP = 0x6
 
 
 class icn(Packet):
