@@ -5,7 +5,7 @@ import socket
 import os
 import sys
 
-from interest_header import interest
+from icn_header import icn
 from payload_header import payload
 from scapy.all import IP, TCP, UDP, Ether, get_if_hwaddr, get_if_list, sendp, sniff
 
@@ -56,8 +56,8 @@ def handle_pkt(packet):
             return
         
         iface = get_if()
-        pkt = Ether(src=get_if_hwaddr(iface), dst=packet[Ether].src)
-        pkt = pkt / IP(dst=packet[interest].src) / TCP(dport=1234, sport=random.randint(49152, 65535)) / payload(content_id=packet[interest].content_id, flag=1, data=image_data)
+        pkt = Ether(src=get_if_hwaddr(iface), dst=packet[Ether].src, type=0x88B6)
+        pkt = pkt / payload(content_id=packet[icn].content_id, flag=1, data=image_data)
 
         pkt.show2()
         sendp(pkt, iface=iface, verbose=False)

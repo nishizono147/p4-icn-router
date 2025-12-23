@@ -2,7 +2,7 @@
 import os
 import sys
 
-from interest_header import interest
+from icn_header import icn
 from payload_header import payload
 from scapy.all import IP, TCP, UDP, Ether, get_if_list, sniff
 
@@ -32,7 +32,7 @@ def save_image(data, content_id):
         print(f"Failed to save image: {e}")
 
 def handle_pkt(pkt):
-    if (TCP in pkt and pkt[TCP].dport == 1234):
+    if payload in pkt :
         print("got a packet")
         pkt.show2()
         content_id = pkt[payload].content_id
