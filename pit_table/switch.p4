@@ -17,48 +17,12 @@ header EthernetHeader {
     bit<16> etherType;
 }
 
-header IPv4Header {
-    bit<4> version;
-    bit<4> ihl;
-    bit<8> diffserv;
-    bit<16> totalLen;
-    bit<16> identification;
-    bit<3> flags;
-    bit<13> fragOffset;
-    bit<8> ttl;
-    bit<8> protocol;
-    bit<16> hdrChecksum;
-    bit<32> srcAddr;
-    bit<32> dstAddr;
-}
-
-header UDPHeader {
-    bit<16> srcPort;
-    bit<16> dstPort;
-    bit<16> length;
-    bit<16> checksum;
-}
-
-header InterestHeader {
+header ICNHeader {
     bit<32> content_id;    // Content ID
     bit<16> type;
     //bit<16> src_router_id; // Source Router ID
     bit<8> flag;
     bit<8> hop_count;      // Hop Count
-    bit<32> src;
-}
-
-header TCPHeader {
-    bit<16> srcPort;
-    bit<16> dstPort;
-    bit<32> seqNo;
-    bit<32> ackNo;
-    bit<4> dataOffset;
-    bit<4> reserved;
-    bit<8> flags;
-    bit<16> window;
-    bit<16> checksum;
-    bit<16> urgentPtr;
 }
 
 header payload_t {
@@ -70,10 +34,7 @@ header payload_t {
 // Header Structure
 struct headers {
     EthernetHeader ethernet;
-    IPv4Header ipv4;
-    UDPHeader udp;
-    InterestHeader interest;
-    TCPHeader tcp;
+    ICNHeader icn;
     payload_t payload;
 }
 
@@ -91,37 +52,15 @@ parser MyParser(packet_in pkt,
     state start {
         pkt.extract(hdr.ethernet); // Ethernetヘッダを解析
         transition select(hdr.ethernet.etherType) {
-            0x0800: parse_ipv4; // IPv4パケットの場合
-            0x88B5: parse_interest;
+            0x88B5: parse_icn; // IPv4パケットの場合
+            0x88B6: parse_payload;
             default: accept;   // その他はそのまま受け入れる
         }
     }
 
-    state parse_ipv4 {
-        pkt.extract(hdr.ipv4); // IPv4ヘッダを解析
-        transition select(hdr.ipv4.protocol) {
-            0x6: parse_tcp;  // interestプロトコルの場合
-            default: accept; // その他は受け入れる
-        }
-    }
-
-    state parse_interest {
-        pkt.extract(hdr.interest);
-        transition select(hdr.interest.type) {
-            0x11: parse_udp;
-            0x6: parse_tcp;
-            default: accept;
-        }
-    }
-
-    state parse_udp {
-        pkt.extract(hdr.udp); // UDPヘッダを解析
-        transition parse_payload;
-    }
-
-    state parse_tcp {
-        pkt.extract(hdr.tcp); // Interestヘッダを解析
-        transition parse_payload;
+    state parse_icn {
+        pkt.extract(hdr.icn);
+        transition accept;
     }
 
     state parse_payload {
@@ -146,6 +85,7 @@ control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
     register<bit<2048>>(1024) content_cache;
+    register<bit<2048>>(1024) pit_table;
 
     action drop() {
         mark_to_drop(standard_metadata);
