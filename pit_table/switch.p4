@@ -85,30 +85,19 @@ control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
     register<bit<2048>>(1024) content_cache;
-    register<bit<2048>>(1024) pit_table;
+    register<bit<32>>(1024) pit_table;
 
     action drop() {
         mark_to_drop(standard_metadata);
     }
 
-    action ipv4_forward(macAddr_t dstAddr, egressSpec_t port) {
-        standard_metadata.egress_spec = port;
-        hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
-        hdr.ethernet.dstAddr = dstAddr;
-        hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
-	//hdr.interest.hop_count = hdr.interest.hop_count - 1;
-    }
-
-    table ipv4_lpm {
-        key = {
-            hdr.ipv4.dstAddr: lpm;
-        }
-        actions = {
-            ipv4_forward;
-            drop;
-        }
-        size = 1024;
-        default_action = drop();
+    action data_forward(macAddr_t dstAddr, egressSpec_t port) {
+        bit<32> egress_port;
+        pit_table.read(egress_port, hdr.payload.content_id);
+        standard_metadata.egress_spec = egress_port;
+        pit_table.write(hdr.payload.content_id, 0);
+        hdr.ethernet.srcAddr = 0xFFFFFFFFFFFF;
+        hdr.ethernet.dstAddr = 0xFFFFFFFFFFFF;
     }
 
     action cache_content() {
@@ -117,40 +106,14 @@ control MyIngress(inout headers hdr,
     }
 
     action return_content() {
-	bit<2048> cached_data;
-        content_cache.read(cached_data, hdr.interest.content_id); //キャッシュ読み取り
-        //hdr.payload.setValid();  //ペイロードを有効化
+        bit<2048> cached_data;
+        content_cache.read(cached_data, hdr.icn.content_id); //キャッシュ読み取り
+        hdr.payload.setValid();  //ペイロードを有効化
         hdr.payload.data = cached_data; //書き込み
-        hdr.ipv4.setValid(); //IPヘッダを有効化
-        hdr.ethernet.etherType = 0x0800;
-        hdr.ipv4.dstAddr = hdr.interest.src; //宛先IPアドレスを送信元IPアドレスに変更
-        hdr.ipv4.srcAddr = hdr.interest.src;
-        hdr.ipv4.ttl = 64;
-        hdr.ipv4.protocol = 0x6;
-	hdr.ipv4.version = 4;
-	hdr.ipv4.ihl = 5;
-	hdr.ipv4.diffserv = 0;
-	hdr.ipv4.identification = 0;
-	hdr.ipv4.totalLen = 281;
-	hdr.ipv4.flags = 2;
-	hdr.ipv4.fragOffset = 0;
-	hdr.ipv4.hdrChecksum = 0;
-        hdr.tcp.setValid();  //TCPヘッダを有効化
-	//hdr.interest.hop_count = 5;
-        hdr.tcp.srcPort = hdr.udp.srcPort;  // UDPの送信元ポートをコピー
-        hdr.tcp.dstPort = hdr.udp.dstPort;  // UDPの宛先ポートをコピー
-	hdr.udp.setInvalid(); //UDP無効
-        hdr.tcp.seqNo = 0;                 // シーケンス番号を初期化
-        hdr.tcp.ackNo = 0;                 // ACK番号を初期化
-        hdr.tcp.dataOffset = 5;            // デフォルト（5×4バイト = 20バイトヘッダ）
-        hdr.tcp.flags = 0x02;              // SYNフラグを設定
-        hdr.tcp.window = 8192;             // ウィンドウサイズを設定
-        hdr.tcp.checksum = 0;              // チェックサムは再計算される可能性あり
-        hdr.tcp.urgentPtr = 0;             // 緊急ポインタをクリア
+        hdr.payload.content_id = hdr.icn.content_id;
         hdr.payload.flag = 1;
-        hdr.payload.content_id = hdr.interest.content_id;
-        hdr.interest.setInvalid();
-	//hdr.interest.hop_count = hdr.interest.hop_count - 1;
+        hdr.ethernet.etherType = 0x88B6;
+        hdr.icn.setInvalid();
     }
 
     action dup_interest(macAddr_t dstAddr, egressSpec_t port) {
@@ -159,7 +122,7 @@ control MyIngress(inout headers hdr,
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
         hdr.ethernet.dstAddr = dstAddr;
         //hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
-        hdr.interest.hop_count = hdr.interest.hop_count - 1;
+        hdr.icn.hop_count = hdr.icn.hop_count - 1;
     }
 
     table foward_interest {
@@ -178,25 +141,26 @@ control MyIngress(inout headers hdr,
     apply {
         bit<2048> cached_data;
 
-        if (hdr.interest.isValid()) {                                    //UDPだったら(Interest)
-            content_cache.read(cached_data, hdr.interest.content_id);   //キャッシュがあるか確認
+        if (hdr.icn.isValid()) {                                   //Interestを受信したら
+            content_cache.read(cached_data, hdr.icn.content_id);   //キャッシュがあるか確認
             if (cached_data != 0) {                                //キャッシュがあったら
-                if (hdr.interest.flag == 1) {
-		    return_content();
-                } else {
-		    return_content();
-                    content_cache.write(hdr.payload.content_id, 0); //remove cached data
+                if (hdr.icn.flag == 1) {                           //エッジノードだったら
+                    return_content();                              //キャッシュを削除せずにDataに加工
+                } else {                                           //エッジノードではなかったら
+                    return_content();                              //Dataに加工して
+                    content_cache.write(hdr.payload.content_id, 0); //キャッシュを削除
                 }
-                ipv4_lpm.apply();                                  //フォワーディング
-            } else {
-		hdr.interest.flag = 0;
-                foward_interest.apply();  //Interestを複製            
+                data_forward();                                  //Dataルーティング
+            } else {                                               //キャッシュがなかったら
+                hdr.icn.flag = 0;                                  //Interestをフォワーディングするのでflagを0にしてエッジ検出しないようにする
+                pit_table.write(hdr.icn.content_id, standard_metadata.ingress_port);  //pitテーブルにコンテンツ名と受信元ポートを記録する
+                foward_interest.apply();  //Interestをフォワーディング
             }
-        } else {
-            if (hdr.payload.flag == 1) {
-                cache_content();                            //TCPだったらキャッシュ
+        } else { //Dataパケットを受信したら
+            if (hdr.payload.flag == 1) { //キャッシュ提案flagが1なら
+                cache_content();                            //キャッシュ
             }
-            ipv4_lpm.apply();                         //フォワーディング
+            data_forward();                         //Dataフォワーディング
         }
     }
 }
@@ -241,11 +205,8 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
 control MyDeparser(packet_out pkt, in headers hdr) {
     apply {
         pkt.emit(hdr.ethernet);
-        pkt.emit(hdr.ipv4);
-	pkt.emit(hdr.interest);
-	pkt.emit(hdr.tcp);
-	pkt.emit(hdr.udp);
-	pkt.emit(hdr.payload);
+        pkt.emit(hdr.icn);
+        pkt.emit(hdr.payload);
     }
 }
 /*************************************************************************
