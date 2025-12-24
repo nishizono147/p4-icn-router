@@ -91,7 +91,7 @@ control MyIngress(inout headers hdr,
         mark_to_drop(standard_metadata);
     }
 
-    action data_forward(macAddr_t dstAddr, egressSpec_t port) {
+    action data_forward() {
         bit<9> egress_port;
         pit_table.read(egress_port, hdr.payload.content_id);
         standard_metadata.egress_spec = egress_port;
