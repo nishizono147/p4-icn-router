@@ -85,14 +85,14 @@ control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
     register<bit<2048>>(1024) content_cache;
-    register<bit<32>>(1024) pit_table;
+    register<bit<9>>(1024) pit_table;
 
     action drop() {
         mark_to_drop(standard_metadata);
     }
 
     action data_forward(macAddr_t dstAddr, egressSpec_t port) {
-        bit<32> egress_port;
+        bit<9> egress_port;
         pit_table.read(egress_port, hdr.payload.content_id);
         standard_metadata.egress_spec = egress_port;
         pit_table.write(hdr.payload.content_id, 0);
