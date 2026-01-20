@@ -144,6 +144,7 @@ control MyIngress(inout headers hdr,
         if (hdr.icn.isValid()) {                                   //Interestを受信したら
             content_cache.read(cached_data, hdr.icn.content_id);   //キャッシュがあるか確認
             if (cached_data != 0) {                                //キャッシュがあったら
+                pit_table.write(hdr.icn.content_id, standard_metadata.ingress_port);
                 if (hdr.icn.flag == 1) {                           //エッジノードだったら
                     return_content();                              //キャッシュを削除せずにDataに加工
                 } else {                                           //エッジノードではなかったら
